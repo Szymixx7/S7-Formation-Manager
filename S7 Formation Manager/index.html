@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon-formationmanager.png">
+    <title>S7 Formation Manager</title>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <img class="brand-logo" src="s7.png" alt="S7">
+                <div>
+                <p class="eyebrow">S7 Formation Manager</p>
+                <h1>Centrum ustawiania składu</h1>
+                </div>
+            </div>
+            <div class="data-actions">
+                <button id="choose-folder-button" class="primary-button" type="button">Wybierz folder danych</button>
+                <div class="save-indicator">
+                    <span id="save-status">Brak folderu danych</span>
+                    <small id="folder-name">Dane lokalne w pamięci przeglądarki</small>
+                </div>
+            </div>
+        </header>
+
+        <nav class="tabs" aria-label="Zakładki główne">
+            <button class="tab-button active" data-tab="lineups" type="button">Składy</button>
+            <button class="tab-button" data-tab="players" type="button">Zawodnicy</button>
+            <button class="tab-button" data-tab="injuries" type="button">Kontuzje</button>
+            <button class="tab-button" data-tab="suspensions" type="button">Zawieszenia</button>
+            <button class="tab-button" data-tab="settings" type="button">Ustawienia</button>
+        </nav>
+
+        <main>
+            <section class="tab-panel active" data-panel="lineups">
+                <div class="lineup-layout">
+                    <aside class="sidebar-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Składy</p>
+                                <h2>Zestawy</h2>
+                            </div>
+                            <button id="add-squad-button" class="ghost-button" type="button">Nowy skład</button>
+                        </div>
+                        <div id="squad-list" class="list-stack"></div>
+                    </aside>
+
+                    <section class="content-card main-lineup-card">
+                        <div class="lineup-toolbar">
+                            <div>
+                                <p class="section-kicker">Aktywny skład</p>
+                                <h2 id="current-squad-name">Brak składu</h2>
+                            </div>
+                            <div class="toolbar-actions">
+                                <button id="undo-button" class="ghost-button" type="button">Cofnij</button>
+                                <button id="rename-squad-button" class="ghost-button" type="button">Zmień nazwę</button>
+                                <button id="delete-squad-button" class="danger-button" type="button">Usuń skład</button>
+                            </div>
+                        </div>
+
+                        <div class="subtabs-row">
+                            <div id="lineup-type-switch" class="segmented-control" aria-label="Typ składu">
+                                <button class="segment active" data-lineup-mode="general" type="button">Skład ogólny</button>
+                                <button class="segment" data-lineup-mode="match" type="button">Skład meczowy</button>
+                            </div>
+                            <div id="match-lineup-toolbar" class="match-toolbar hidden">
+                                <select id="match-lineup-select" aria-label="Wybór składu meczowego"></select>
+                                <label id="match-date-field" class="inline-field match-date-field hidden">
+                                    <span>Data meczu</span>
+                                    <input id="match-date-input" type="text" inputmode="numeric" placeholder="dd-mm-rrrr">
+                                </label>
+                                <button id="add-match-lineup-button" class="ghost-button" type="button">Dodaj meczowy</button>
+                                <button id="rename-match-lineup-button" class="ghost-button" type="button">Zmień nazwę</button>
+                                <button id="delete-match-lineup-button" class="danger-button" type="button">Usuń</button>
+                            </div>
+                        </div>
+
+                        <div class="formation-toolbar">
+                            <label class="inline-field">
+                                <span>Formacja</span>
+                                <input id="formation-input" type="text" placeholder="np. 4-3-3">
+                            </label>
+                            <div class="formation-actions">
+                                <button id="apply-formation-button" class="primary-button" type="button">Fajka</button>
+                                <p class="helper-text">Formacja aktualizuje ustawienie dopiero po kliknięciu. Liczba zawodników na boisku może być dowolna.</p>
+                            </div>
+                        </div>
+
+                        <div id="availability-panel" class="availability-panel hidden"></div>
+
+                        <div class="pitch-and-bench">
+                            <section class="pitch-card">
+                                <div class="formation-toolbar formation-toolbar-inline">
+                                    <label class="inline-field">
+                                        <span>Formacja</span>
+                                        <div class="formation-input-wrap">
+                                            <input id="formation-input-inline" type="text" placeholder="np. 4-3-3">
+                                            <button id="apply-formation-button-inline" class="primary-button icon-button" type="button" aria-label="Zastosuj formację">✓</button>
+                                        </div>
+                                    </label>
+                                    <p class="helper-text">Formacja aktualizuje ustawienie dopiero po kliknięciu fajki. Liczba zawodników na boisku może być dowolna.</p>
+                                </div>
+                                <div class="pitch-header">
+                                    <h3>Zawodnicy na boisku</h3>
+                                    <p id="lineup-summary">Dodawaj zawodników i przeciągaj ich po boisku.</p>
+                                </div>
+                                <div id="lineup-actions-panel" class="lineup-actions-panel hidden"></div>
+                                <div id="pitch" class="pitch"></div>
+                            </section>
+
+                            <section class="bench-card">
+                                <div class="pitch-header">
+                                    <h3>Reszta zawodników</h3>
+                                    <p>Dostępni poza podstawową jedenastką.</p>
+                                </div>
+                                <div id="bench-list" class="bench-list"></div>
+                            </section>
+                        </div>
+
+                        <details id="availability-details" class="availability-details hidden">
+                            <summary>Lista obecności</summary>
+                            <div id="availability-panel-collapsible" class="availability-panel"></div>
+                        </details>
+                    </section>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="players">
+                <div class="management-layout">
+                    <section class="content-card form-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Zawodnicy</p>
+                                <h2>Dodaj lub edytuj</h2>
+                            </div>
+                        </div>
+                        <form id="player-form" class="stack-form">
+                            <input id="player-id" type="hidden">
+                            <label>
+                                <span>Imię</span>
+                                <input id="player-first-name" type="text">
+                            </label>
+                            <label>
+                                <span>Nazwisko</span>
+                                <input id="player-last-name" type="text">
+                            </label>
+                            <fieldset class="positions-fieldset">
+                                <legend>Pozycje</legend>
+                                <div id="player-positions" class="positions-grid"></div>
+                            </fieldset>
+                            <label>
+                                <span>Numer</span>
+                                <input id="player-number" type="number" min="0" max="99">
+                            </label>
+                            <label>
+                                <span>Miniface</span>
+                                <input id="player-miniface" type="file" accept="image/*">
+                            </label>
+                            <div class="form-actions">
+                                <button class="primary-button" type="submit">Zapisz zawodnika</button>
+                                <button id="cancel-player-edit" class="ghost-button" type="button">Wyczyść</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="content-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Kadra</p>
+                                <h2>Lista zawodników</h2>
+                            </div>
+                        </div>
+                        <div id="players-list" class="table-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="injuries">
+                <div class="management-layout">
+                    <section class="content-card form-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Kontuzje</p>
+                                <h2>Dodaj kontuzję</h2>
+                            </div>
+                        </div>
+                        <form id="injury-form" class="stack-form">
+                            <input id="injury-id" type="hidden">
+                            <label>
+                                <span>Zawodnik</span>
+                                <select id="injury-player-id" required></select>
+                            </label>
+                            <label>
+                                <span>Data urazu</span>
+                                <input id="injury-start-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr" required>
+                            </label>
+                            <label>
+                                <span>Typ urazu</span>
+                                <input id="injury-type" type="text" required>
+                            </label>
+                            <label>
+                                <span>Stopień powagi</span>
+                                <input id="injury-severity" type="text" placeholder="np. lekka / średnia / poważna" required>
+                            </label>
+                            <label>
+                                <span>Przewidywany powrót</span>
+                                <input id="injury-return-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr" required>
+                            </label>
+                            <div class="form-actions">
+                                <button class="primary-button" type="submit">Zapisz kontuzję</button>
+                                <button id="cancel-injury-edit" class="ghost-button" type="button">Wyczyść</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="content-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Status zdrowotny</p>
+                                <h2>Aktywne kontuzje</h2>
+                            </div>
+                            <div id="injury-view-switch" class="segmented-control" aria-label="Widok kontuzji">
+                                <button class="segment active" data-injury-view="active" type="button">Aktywne</button>
+                                <button class="segment" data-injury-view="archived" type="button">Archiwalne</button>
+                            </div>
+                        </div>
+                        <div id="injuries-list" class="table-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="suspensions">
+                <div class="management-layout">
+                    <section class="content-card form-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Zawieszenia</p>
+                                <h2>Dodaj zawieszenie</h2>
+                            </div>
+                        </div>
+                        <form id="suspension-form" class="stack-form">
+                            <input id="suspension-id" type="hidden">
+                            <label>
+                                <span>Zawodnik</span>
+                                <select id="suspension-player-id" required></select>
+                            </label>
+                            <label>
+                                <span>Data końca zawieszenia</span>
+                                <input id="suspension-end-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr" required>
+                            </label>
+                            <div class="form-actions">
+                                <button class="primary-button" type="submit">Zapisz zawieszenie</button>
+                                <button id="cancel-suspension-edit" class="ghost-button" type="button">Wyczyść</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="content-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="section-kicker">Dyscyplina</p>
+                                <h2>Aktywne zawieszenia</h2>
+                            </div>
+                            <div id="suspension-view-switch" class="segmented-control" aria-label="Widok zawieszeń">
+                                <button class="segment active" data-suspension-view="active" type="button">Aktywne</button>
+                                <button class="segment" data-suspension-view="archived" type="button">Archiwalne</button>
+                            </div>
+                        </div>
+                        <div id="suspensions-list" class="table-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="settings">
+                <section class="content-card settings-card">
+                    <p class="section-kicker">Ustawienia</p>
+                    <form id="settings-form" class="stack-form settings-form">
+                        <label>
+                            <span>Reszta zawodnikow</span>
+                            <select id="bench-layout-mode">
+                                <option value="bottom">Pod boiskiem</option>
+                                <option value="side">Z boku</option>
+                            </select>
+                        </label>
+                        <h2>Automatyczne czyszczenie historii</h2>
+                        <label>
+                            <span>Kontuzje: usuń po ilu dniach od końca</span>
+                            <input id="injury-retention-days" type="number" min="0" placeholder="Puste = nigdy">
+                        </label>
+                        <label>
+                            <span>Zawieszenia: usuń po ilu dniach od końca</span>
+                            <input id="suspension-retention-days" type="number" min="0" placeholder="Domyślnie 1">
+                        </label>
+                        <label>
+                            <span>Składy meczowe: usuń po ilu dniach od daty meczu</span>
+                            <input id="match-lineup-retention-days" type="number" min="0" placeholder="Puste = nigdy">
+                        </label>
+                    </form>
+                    <p>Kontuzje domyślnie nie są kasowane nigdy. Zawieszenia domyślnie znikają 1 dzień po zakończeniu. Składy meczowe bez ustawionej retencji zostają na stałe.</p>
+                </section>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>
+                <a href="https://szymixx7.github.io/S7-Formation-Manager" target="_blank" rel="noreferrer">S7 Formation Manager</a>
+                © 2026 by
+                <a href="https://www.instagram.com/xszymon7/?hl=pl" target="_blank" rel="noreferrer">Szymix7</a>
+                jest objety licencja
+                <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/" target="_blank" rel="noreferrer">CC BY-NC-ND 4.0</a>
+                <img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="CC">
+                <img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="BY">
+                <img src="https://mirrors.creativecommons.org/presskit/icons/nc.svg" alt="NC">
+                <img src="https://mirrors.creativecommons.org/presskit/icons/nd.svg" alt="ND">
+            </p>
+        </footer>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2 id="modal-title">S7</h2>
+                <button id="modal-close-button" class="ghost-button modal-close" type="button" aria-label="Zamknij">×</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+            <div id="modal-actions" class="modal-actions"></div>
+        </div>
+    </div>
+
+    <script src="script-clean.js"></script>
+</body>
+</html>
