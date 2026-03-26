@@ -49,6 +49,7 @@ let selectedBenchPlayerId = null;
 let activeModalResolver = null;
 let injuryViewMode = "active";
 let suspensionViewMode = "active";
+let benchFilterMode = "all";
 
 document.addEventListener("DOMContentLoaded", async () => {
     state = migrateState(loadFromLocalStorage());
@@ -88,9 +89,12 @@ function cacheDom() {
     dom.availabilityDetails = document.getElementById("availability-details");
     dom.pitchAndBench = document.querySelector(".pitch-and-bench");
     dom.benchCard = document.querySelector(".bench-card");
+    dom.benchHeader = document.querySelector(".bench-card .pitch-header");
+    dom.benchFilterSwitch = document.getElementById("bench-filter-switch");
     dom.pitch = document.getElementById("pitch");
     dom.lineupSummary = document.getElementById("lineup-summary");
     dom.lineupActionsPanel = document.getElementById("lineup-actions-panel");
+    dom.benchFilterButtons = [...document.querySelectorAll("[data-bench-filter]")];
     dom.benchList = document.getElementById("bench-list");
     dom.playerForm = document.getElementById("player-form");
     dom.playerId = document.getElementById("player-id");
@@ -120,6 +124,11 @@ function cacheDom() {
     dom.suspensionViewButtons = [...document.querySelectorAll("[data-suspension-view]")];
     dom.settingsForm = document.getElementById("settings-form");
     dom.benchLayoutMode = document.getElementById("bench-layout-mode");
+    dom.disableMiniface = document.getElementById("disable-miniface");
+    dom.hidePlayerNumber = document.getElementById("hide-player-number");
+    dom.hidePlayerPositions = document.getElementById("hide-player-positions");
+    dom.autoFixPositions = document.getElementById("auto-fix-positions");
+    dom.fixPositionsButton = document.getElementById("fix-positions-button");
     dom.injuryRetentionDays = document.getElementById("injury-retention-days");
     dom.suspensionRetentionDays = document.getElementById("suspension-retention-days");
     dom.matchLineupRetentionDays = document.getElementById("match-lineup-retention-days");
@@ -128,6 +137,28 @@ function cacheDom() {
     dom.modalBody = document.getElementById("modal-body");
     dom.modalActions = document.getElementById("modal-actions");
     dom.modalCloseButton = document.getElementById("modal-close-button");
+    normalizeBenchHeader();
+}
+
+function normalizeBenchHeader() {
+    if (!dom.benchHeader || !dom.benchFilterSwitch) {
+        return;
+    }
+    if (!dom.benchHeader.classList.contains("bench-header")) {
+        dom.benchHeader.classList.add("bench-header");
+    }
+    let titleGroup = dom.benchHeader.querySelector(".bench-header-copy");
+    if (!titleGroup) {
+        titleGroup = document.createElement("div");
+        titleGroup.className = "bench-header-copy";
+        while (dom.benchHeader.firstChild) {
+            titleGroup.appendChild(dom.benchHeader.firstChild);
+        }
+        dom.benchHeader.appendChild(titleGroup);
+    }
+    if (dom.benchFilterSwitch.parentElement !== dom.benchHeader) {
+        dom.benchHeader.appendChild(dom.benchFilterSwitch);
+    }
 }
 
 function bindEvents() {
@@ -167,8 +198,13 @@ function bindEvents() {
         suspensionViewMode = button.dataset.suspensionView;
         renderSuspensionsSection();
     }));
+    dom.benchFilterButtons.forEach((button) => button.addEventListener("click", () => {
+        benchFilterMode = button.dataset.benchFilter || "all";
+        renderBench();
+    }));
     dom.settingsForm.addEventListener("input", handleSettingsChange);
     dom.settingsForm.addEventListener("change", handleSettingsChange);
+    dom.fixPositionsButton.addEventListener("click", fixCurrentLineupPositions);
     dom.modalCloseButton.addEventListener("click", () => closeModal(""));
     dom.modalOverlay.addEventListener("click", (event) => {
         if (event.target === dom.modalOverlay) {
@@ -208,8 +244,12 @@ function sanitizeFolderName(value) {
         .slice(0, 80) || "zestaw";
 }
 
-function openModal({ title, bodyHtml, actions, closeable = true }) {
-    dom.modalTitle.textContent = title;
+function openModal({ title, titleHtml, bodyHtml, actions, closeable = true }) {
+    if (titleHtml) {
+        dom.modalTitle.innerHTML = titleHtml;
+    } else {
+        dom.modalTitle.textContent = title;
+    }
     dom.modalBody.innerHTML = bodyHtml;
     dom.modalActions.innerHTML = "";
     dom.modalCloseButton.style.display = closeable ? "" : "none";
@@ -298,6 +338,10 @@ function defaultState() {
             lineupMode: "general",
             settings: {
                 benchLayoutMode: "bottom",
+                disableMiniface: false,
+                hidePlayerNumber: false,
+                hidePlayerPositions: false,
+                autoFixPositions: true,
                 injuryRetentionDays: null,
                 suspensionRetentionDays: 1,
                 matchLineupRetentionDays: null
@@ -450,6 +494,26 @@ function getPlayerById(playerId) {
 
 function getPlayerLabel(player) {
     return `${player.firstName} ${player.lastName}`.trim() || "Bez nazwy";
+}
+
+function normalizePositionCode(position) {
+    const raw = String(position || "").trim().toUpperCase();
+    const aliases = {
+        "ŚN": "SN",
+        "SN": "SN",
+        "ŚPO": "SPO",
+        "SPO": "SPO",
+        "ŚP": "SP",
+        "SP": "SP",
+        "ŚPD": "SPD",
+        "SPD": "SPD",
+        "ŚO": "SO",
+        "SO": "SO",
+        "OBR": "DEF",
+        "DEF": "DEF",
+        "BR": "BR"
+    };
+    return aliases[raw] || raw;
 }
 
 function formatPositions(positions) {
@@ -917,6 +981,34 @@ function addDaysToFlexibleDate(value, days) {
     return `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`;
 }
 
+function getFlexibleDateTimestamp(value) {
+    const parsed = parseFlexibleDate(value);
+    if (!parsed) {
+        return null;
+    }
+    const year = Number(parsed.year);
+    if (!Number.isFinite(year) || year > 275760) {
+        return null;
+    }
+    return new Date(year, parsed.month - 1, parsed.day).getTime();
+}
+
+function getFlexibleDateDayDiff(startValue, endValue) {
+    const start = getFlexibleDateTimestamp(startValue);
+    const end = getFlexibleDateTimestamp(endValue);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        return null;
+    }
+    return Math.round((end - start) / 86400000);
+}
+
+function formatDaysLabel(days) {
+    if (!Number.isFinite(days)) {
+        return "";
+    }
+    return `${days} ${Math.abs(days) === 1 ? "dzien" : "dni"}`;
+}
+
 function getTodayFlexibleDate() {
     const now = new Date();
     return `${String(now.getDate()).padStart(2, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${now.getFullYear()}`;
@@ -1130,6 +1222,61 @@ function getFormationTargetsForLineup(lineup) {
     return targets;
 }
 
+function getDistanceBetweenPoints(left, right) {
+    const deltaX = Number(left.x) - Number(right.x);
+    const deltaY = Number(left.y) - Number(right.y);
+    return Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+}
+
+function fixLineupPositions(lineup) {
+    if (!lineup || !lineup.placedPlayers?.length) {
+        return;
+    }
+    const targets = getFormationTargetsForLineup(lineup).map((target, index) => ({ ...target, index }));
+    const players = lineup.placedPlayers
+        .map((placed, index) => ({ placed, player: getPlayerById(placed.playerId), index }))
+        .filter((entry) => entry.player);
+    const remainingPlayers = [...players];
+    const remainingTargets = [...targets];
+    const assignments = [];
+
+    while (remainingPlayers.length && remainingTargets.length) {
+        let bestTargetIndex = 0;
+        let bestPlayerIndex = 0;
+        let bestScore = -Infinity;
+        remainingTargets.forEach((target, targetIndex) => {
+            remainingPlayers.forEach((entry, playerIndex) => {
+                const positionalScore = scorePlayerForLabel(entry.player, target.label);
+                const exactDistance = getDistanceBetweenPoints(entry.placed, target);
+                const combinedScore = positionalScore * 1000 - exactDistance;
+                if (combinedScore > bestScore) {
+                    bestScore = combinedScore;
+                    bestTargetIndex = targetIndex;
+                    bestPlayerIndex = playerIndex;
+                }
+            });
+        });
+        const [target] = remainingTargets.splice(bestTargetIndex, 1);
+        const [entry] = remainingPlayers.splice(bestPlayerIndex, 1);
+        assignments.push({ target, entry });
+    }
+
+    assignments.forEach(({ target, entry }) => {
+        entry.placed.x = target.x;
+        entry.placed.y = target.y;
+    });
+}
+
+function fixCurrentLineupPositions() {
+    const lineup = getCurrentLineup();
+    if (!lineup || !lineup.placedPlayers?.length) {
+        return;
+    }
+    commitChange(() => {
+        fixLineupPositions(lineup);
+    });
+}
+
 function scorePlayerForLabel(player, label) {
     const preferences = SCORE_MAP[label] || [label];
     for (let index = 0; index < preferences.length; index += 1) {
@@ -1145,10 +1292,21 @@ function getPlayerStatuses(playerId) {
     const injury = getInjuries().find((item) => item.playerId === playerId && isRecordActive(item.returnDate));
     const suspension = getSuspensions().find((item) => item.playerId === playerId && isRecordActive(item.endDate));
     if (injury) {
-        statuses.push({ type: "injury", label: `${injury.type || "Kontuzja"} | ${injury.startDate} -> ${injury.returnDate}${injury.severity ? ` | ${injury.severity}` : ""}` });
+        statuses.push({
+            type: "injury",
+            playerId,
+            startDate: injury.startDate,
+            typeLabel: injury.type,
+            severity: injury.severity,
+            returnDate: injury.returnDate
+        });
     }
     if (suspension) {
-        statuses.push({ type: "suspension", label: `Zawieszenie do ${suspension.endDate}` });
+        statuses.push({
+            type: "suspension",
+            playerId,
+            endDate: suspension.endDate
+        });
     }
     return statuses;
 }
@@ -1168,8 +1326,64 @@ function createStatusBadge(status) {
         badge.textContent = status.type === "injury" ? "K" : "Z";
     }, { once: true });
     badge.append(icon);
-    badge.addEventListener("click", () => showAlertModal(status.type === "injury" ? "Kontuzja" : "Zawieszenie", status.label));
+    badge.addEventListener("click", () => showStatusModal(status));
     return badge;
+}
+
+function showStatusModal(status) {
+    const player = getPlayerById(status.playerId);
+    const items = [];
+    if (player) {
+        items.push(`Zawodnik: ${getPlayerLabel(player)}`);
+    }
+    if (status.type === "injury") {
+        if (status.startDate) {
+            items.push(`Data urazu: ${status.startDate}`);
+        }
+        if (status.typeLabel) {
+            items.push(`Typ urazu: ${status.typeLabel}`);
+        }
+        if (status.severity) {
+            items.push(`Stopien powagi: ${status.severity}`);
+        }
+        if (status.returnDate) {
+            items.push(`Przewidywany powrot: ${status.returnDate}`);
+        }
+        const totalInjuryDuration = status.startDate && status.returnDate ? getFlexibleDateDayDiff(status.startDate, status.returnDate) : null;
+        if (totalInjuryDuration !== null) {
+            items.push(`Laczny czas kontuzji (do wyleczenia): ${formatDaysLabel(Math.max(0, totalInjuryDuration))}`);
+        }
+        const injuryElapsed = status.startDate ? getFlexibleDateDayDiff(status.startDate, getTodayFlexibleDate()) : null;
+        if (injuryElapsed !== null && injuryElapsed >= 0) {
+            items.push(`Czas trwania od urazu: ${formatDaysLabel(injuryElapsed)}`);
+        }
+        if (status.returnDate && isValidFlexibleDate(status.returnDate)) {
+            const daysToReturn = getFlexibleDateDayDiff(getTodayFlexibleDate(), status.returnDate);
+            if (daysToReturn !== null && daysToReturn >= 0) {
+                items.push(`Do powrotu: ${formatDaysLabel(daysToReturn)}`);
+            } else if (daysToReturn !== null) {
+                items.push(`Powrot byl: ${formatDaysLabel(Math.abs(daysToReturn))} temu`);
+            }
+        }
+    } else {
+        if (status.endDate) {
+            items.push(`Koniec zawieszenia: ${status.endDate}`);
+        }
+        if (status.endDate && isValidFlexibleDate(status.endDate)) {
+            const daysToEnd = getFlexibleDateDayDiff(getTodayFlexibleDate(), status.endDate);
+            if (daysToEnd !== null && daysToEnd >= 0) {
+                items.push(`Do konca zawieszenia: ${formatDaysLabel(daysToEnd)}`);
+            } else if (daysToEnd !== null) {
+                items.push(`Zawieszenie zakonczylo sie: ${formatDaysLabel(Math.abs(daysToEnd))} temu`);
+            }
+        }
+    }
+    const bodyHtml = items.length ? `<ul class="status-modal-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>Brak dodatkowych szczegolow.</p>`;
+    openModal({
+        titleHtml: `<span class="status-modal-heading"><img src="${escapeHtml(STATUS_ICONS[status.type])}" alt="${status.type}"><span>${status.type === "injury" ? "Kontuzja" : "Zawieszenie"}</span></span>`,
+        bodyHtml,
+        actions: [{ label: "OK", className: "primary-button", onClick: () => closeModal(true) }]
+    });
 }
 
 function refreshAll() {
@@ -1207,6 +1421,26 @@ function getBenchCandidates() {
         }
         return getPlayerLabel(left).localeCompare(getPlayerLabel(right), "pl");
     });
+}
+
+function matchesBenchFilter(player) {
+    const positions = new Set((player.positions || []).map(normalizePositionCode));
+    if (benchFilterMode === "all") {
+        return true;
+    }
+    if (benchFilterMode === "gk") {
+        return positions.has("BR");
+    }
+    if (benchFilterMode === "def") {
+        return ["DEF", "CLS", "LO", "SO", "PO", "CPS"].some((position) => positions.has(position));
+    }
+    if (benchFilterMode === "mid") {
+        return ["POM", "LP", "SPO", "SP", "PP", "SPD"].some((position) => positions.has(position));
+    }
+    if (benchFilterMode === "att") {
+        return ["ATT", "LS", "N", "SN", "PS"].some((position) => positions.has(position));
+    }
+    return true;
 }
 
 function renderSquads() {
@@ -1296,8 +1530,9 @@ function renderPitch() {
     dom.pitch.innerHTML = "";
     dom.pitch.style.removeProperty("min-width");
     dom.pitch.style.removeProperty("min-height");
-    dom.pitch.style.setProperty("--pitch-player-width", "154px");
-    dom.pitch.style.setProperty("--pitch-card-min-height", "96px");
+    dom.pitch.classList.toggle("miniface-off", Boolean(state.metadata.settings.disableMiniface));
+    dom.pitch.style.setProperty("--pitch-player-width", state.metadata.settings.disableMiniface ? "140px" : "154px");
+    dom.pitch.style.setProperty("--pitch-card-min-height", state.metadata.settings.disableMiniface ? "68px" : "96px");
     dom.lineupActionsPanel.innerHTML = "";
     dom.lineupActionsPanel.classList.toggle("hidden", !selectedPitchPlayerId);
     if (!lineup) {
@@ -1326,6 +1561,9 @@ function renderPitch() {
         if (!player) {
             return;
         }
+        const showMiniface = !state.metadata.settings.disableMiniface;
+        const showNumber = !state.metadata.settings.hidePlayerNumber;
+        const showPositions = !state.metadata.settings.hidePlayerPositions;
         const wrapper = document.createElement("button");
         wrapper.type = "button";
         wrapper.className = `draggable-player${selectedPitchPlayerId === player.id ? " selected" : ""}`;
@@ -1333,8 +1571,8 @@ function renderPitch() {
         wrapper.style.top = `${placed.y}%`;
         wrapper.addEventListener("click", () => handlePitchPlayerClick(player.id));
         const card = document.createElement("div");
-        card.className = `player-card${isInactiveMatchPlayer(player.id) ? " match-inactive" : ""}`;
-        card.innerHTML = `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}"><div class="player-ident"><div class="player-head"><span class="player-number-badge">${player.number ? escapeHtml(player.number) : ""}</span><span class="player-name">${escapeHtml(getPlayerLabel(player))}</span><span class="player-icons"></span></div><div class="player-positions">${escapeHtml(formatPositions(player.positions))}</div></div>`;
+        card.className = `player-card${isInactiveMatchPlayer(player.id) ? " match-inactive" : ""}${showMiniface ? "" : " no-miniface"}`;
+        card.innerHTML = `${showMiniface ? `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}">` : ""}<div class="player-ident"><div class="player-head"><div class="player-side player-side-left"><span class="player-icons"></span><span class="player-number-badge">${showNumber && player.number ? escapeHtml(player.number) : ""}</span></div><span class="player-name">${escapeHtml(getPlayerLabel(player))}</span><span class="player-side-spacer" aria-hidden="true"></span></div><div class="player-positions">${showPositions ? escapeHtml(formatPositions(player.positions)) : ""}</div></div>`;
         const iconRow = card.querySelector(".player-icons");
         getPlayerStatuses(player.id).forEach((status) => iconRow.appendChild(createStatusBadge(status)));
         wrapper.appendChild(card);
@@ -1347,9 +1585,10 @@ function adjustPitchLayout(lineup) {
     if (!lineup || !dom.pitch) {
         return;
     }
-    const defaultPlayerWidth = 154;
-    const minPlayerWidth = 132;
-    const defaultCardHeight = 96;
+    const minifaceEnabled = !state.metadata.settings.disableMiniface;
+    const defaultPlayerWidth = minifaceEnabled ? 154 : 140;
+    const minPlayerWidth = minifaceEnabled ? 132 : 118;
+    const defaultCardHeight = minifaceEnabled ? 96 : 68;
     const minPitchHeight = 580;
     const horizontalGap = 18;
     const verticalGap = 18;
@@ -1422,20 +1661,36 @@ function adjustPitchLayout(lineup) {
 
 function renderBench() {
     dom.benchList.innerHTML = "";
-    const players = getBenchCandidates();
+    dom.benchFilterButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.benchFilter === benchFilterMode);
+    });
+    const players = getBenchCandidates().filter(matchesBenchFilter);
+    const showMiniface = !state.metadata.settings.disableMiniface;
     if (!players.length) {
         dom.benchList.innerHTML = `<div class="empty-state">Brak zawodnikow poza boiskiem.</div>`;
         return;
     }
     players.forEach((player) => {
         const row = document.createElement("div");
-        row.className = `bench-player selectable${selectedBenchPlayerId === player.id ? " selected" : ""}${isInactiveMatchPlayer(player.id) ? " match-inactive" : ""}`;
-        row.innerHTML = `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}"><div class="table-main"><strong>${escapeHtml(getPlayerLabel(player))}</strong><span class="status-text">${escapeHtml(formatPositions(player.positions))}${player.number ? ` | Nr ${escapeHtml(player.number)}` : ""}</span></div>`;
+        row.className = `bench-player selectable${selectedBenchPlayerId === player.id ? " selected" : ""}${isInactiveMatchPlayer(player.id) ? " match-inactive" : ""}${showMiniface ? "" : " no-miniface"}`;
+        row.innerHTML = `${showMiniface ? `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}">` : ""}<div class="table-main"><strong>${escapeHtml(getPlayerLabel(player))}</strong><span class="status-text">${escapeHtml(formatPositions(player.positions))}${player.number ? ` | Nr ${escapeHtml(player.number)}` : ""}</span></div>`;
         const actions = document.createElement("div");
         actions.className = "player-icons";
         getPlayerStatuses(player.id).forEach((status) => actions.appendChild(createStatusBadge(status)));
         row.appendChild(actions);
         row.addEventListener("click", () => {
+            if (selectedPitchPlayerId) {
+                commitChange(() => {
+                    const lineup = getCurrentLineup();
+                    const current = lineup?.placedPlayers.find((item) => item.playerId === selectedPitchPlayerId);
+                    if (current) {
+                        current.playerId = player.id;
+                        selectedPitchPlayerId = null;
+                        selectedBenchPlayerId = null;
+                    }
+                });
+                return;
+            }
             selectedBenchPlayerId = selectedBenchPlayerId === player.id ? null : player.id;
             selectedPitchPlayerId = null;
             refreshAll();
@@ -1547,14 +1802,15 @@ function renderPlayersSection() {
     renderPlayerSelectOptions();
     dom.playersList.innerHTML = "";
     const players = getPlayers();
+    const showMiniface = !state.metadata.settings.disableMiniface;
     if (!players.length) {
         dom.playersList.innerHTML = `<div class="empty-state">Brak zawodnikow.</div>`;
         return;
     }
     players.forEach((player) => {
         const row = document.createElement("div");
-        row.className = "table-row";
-        row.innerHTML = `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}" width="44" height="44"><div class="table-main"><strong>${escapeHtml(getPlayerLabel(player))}</strong><span class="status-text">${escapeHtml(formatPositions(player.positions))}${player.number ? ` | Nr ${escapeHtml(player.number)}` : ""}</span></div>`;
+        row.className = `table-row${showMiniface ? "" : " no-miniface"}`;
+        row.innerHTML = `${showMiniface ? `<img src="${escapeHtml(player.miniface || "defaultMiniface.png")}" alt="${escapeHtml(getPlayerLabel(player))}" width="44" height="44">` : ""}<div class="table-main"><strong>${escapeHtml(getPlayerLabel(player))}</strong><span class="status-text">${escapeHtml(formatPositions(player.positions))}${player.number ? ` | Nr ${escapeHtml(player.number)}` : ""}</span></div>`;
         const actions = document.createElement("div");
         actions.className = "toolbar-actions";
         getPlayerStatuses(player.id).forEach((status) => actions.appendChild(createStatusBadge(status)));
@@ -1626,6 +1882,10 @@ function renderSuspensionsSection() {
 
 function renderSettings() {
     dom.benchLayoutMode.value = state.metadata.settings.benchLayoutMode || "bottom";
+    dom.disableMiniface.checked = Boolean(state.metadata.settings.disableMiniface);
+    dom.hidePlayerNumber.checked = Boolean(state.metadata.settings.hidePlayerNumber);
+    dom.hidePlayerPositions.checked = Boolean(state.metadata.settings.hidePlayerPositions);
+    dom.autoFixPositions.checked = Boolean(state.metadata.settings.autoFixPositions);
     dom.injuryRetentionDays.value = state.metadata.settings.injuryRetentionDays ?? "";
     dom.suspensionRetentionDays.value = state.metadata.settings.suspensionRetentionDays ?? "";
     dom.matchLineupRetentionDays.value = state.metadata.settings.matchLineupRetentionDays ?? "";
@@ -1659,11 +1919,25 @@ function parseRetentionValue(value) {
 }
 
 function handleSettingsChange() {
+    const nextDisableMiniface = Boolean(dom.disableMiniface.checked);
+    const nextHidePlayerNumber = Boolean(dom.hidePlayerNumber.checked);
+    const nextHidePlayerPositions = Boolean(dom.hidePlayerPositions.checked);
+    const shouldAutoFix = Boolean(dom.autoFixPositions.checked);
+    const cardLayoutChanged = state.metadata.settings.disableMiniface !== nextDisableMiniface
+        || state.metadata.settings.hidePlayerNumber !== nextHidePlayerNumber
+        || state.metadata.settings.hidePlayerPositions !== nextHidePlayerPositions;
     commitChange(() => {
         state.metadata.settings.benchLayoutMode = dom.benchLayoutMode.value === "side" ? "side" : "bottom";
+        state.metadata.settings.disableMiniface = nextDisableMiniface;
+        state.metadata.settings.hidePlayerNumber = nextHidePlayerNumber;
+        state.metadata.settings.hidePlayerPositions = nextHidePlayerPositions;
+        state.metadata.settings.autoFixPositions = shouldAutoFix;
         state.metadata.settings.injuryRetentionDays = parseRetentionValue(dom.injuryRetentionDays.value);
         state.metadata.settings.suspensionRetentionDays = parseRetentionValue(dom.suspensionRetentionDays.value);
         state.metadata.settings.matchLineupRetentionDays = parseRetentionValue(dom.matchLineupRetentionDays.value);
+        if (shouldAutoFix && cardLayoutChanged) {
+            fixLineupPositions(getCurrentLineup());
+        }
     }, false);
 }
 
@@ -1687,12 +1961,12 @@ async function addMatchLineup() { const squad = getActiveSquad(); if (!squad) re
 async function renameActiveMatchLineup() { const lineup = getActiveMatchLineup(); if (!lineup) return; const name = await showPromptModal("Zmien nazwe", "Nowa nazwa skladu meczowego:", lineup.name); if (!name) return; commitChange(() => { lineup.name = name.trim(); }, false); }
 async function deleteActiveMatchLineup() { const squad = getActiveSquad(); const lineup = getActiveMatchLineup(); if (!squad || !lineup) return; if (!await showConfirmModal("Usun sklad meczowy", `Usunac ${lineup.name}?`)) return; commitChange(() => { squad.matchLineups = squad.matchLineups.filter((item) => item.id !== lineup.id); state.metadata.lastOpenedMatchLineupId = squad.matchLineups[0]?.id || ""; selectedPitchPlayerId = null; selectedBenchPlayerId = null; }, false); }
 function handleMatchDateChange() { const lineup = getActiveMatchLineup(); if (!lineup) return; const normalized = normalizeDateInput(dom.matchDateInput.value); if (normalized && !isValidFlexibleDate(normalized)) { showAlertModal("Blad", "Wpisz date meczu w formacie dd-mm-rrrr."); dom.matchDateInput.value = lineup.matchDate || ""; return; } commitChange(() => { lineup.matchDate = normalized; }, false); }
-function applyFormation() { const lineup = getCurrentLineup(); if (!lineup) return; const formation = normalizeFormationInput(dom.formationInput.value || dom.formationInputLegacy?.value || lineup.formation); commitChange(() => { lineup.draftFormation = formation; lineup.formation = formation; const targets = getFormationTargetsForLineup(lineup); const players = lineup.placedPlayers.map((placed) => ({ placed, player: getPlayerById(placed.playerId) })).filter((entry) => entry.player); const remaining = [...players]; targets.forEach((target) => { remaining.sort((left, right) => scorePlayerForLabel(right.player, target.label) - scorePlayerForLabel(left.player, target.label)); const best = remaining.shift(); if (best) { best.placed.x = target.x; best.placed.y = target.y; } }); }); }
+function applyFormation() { const lineup = getCurrentLineup(); if (!lineup) return; const formation = normalizeFormationInput(dom.formationInput.value || dom.formationInputLegacy?.value || lineup.formation); commitChange(() => { lineup.draftFormation = formation; lineup.formation = formation; fixLineupPositions(lineup); }); }
 async function handlePlayerSubmit(event) { event.preventDefault(); const existing = getPlayerById(dom.playerId.value); const playerId = dom.playerId.value || createId("player"); const miniface = await fileToDataUrl(dom.playerMiniface.files[0]); const player = { id: playerId, firstName: dom.playerFirstName.value.trim(), lastName: dom.playerLastName.value.trim(), positions: getSelectedPositions(), number: dom.playerNumber.value.trim(), miniface: miniface || existing?.miniface || "", minifaceFileName: dom.playerMiniface.files[0] ? `miniface/${playerId}.png` : (existing?.minifaceFileName || "") }; if (!player.firstName && !player.lastName) { await showAlertModal("Blad", "Podaj przynajmniej imie albo nazwisko."); return; } commitChange(() => { const teamData = getTeamData(); const index = teamData.players.findIndex((item) => item.id === player.id); if (index >= 0) teamData.players[index] = player; else { teamData.players.push(player); getActiveSquad().matchLineups.forEach((lineup) => { lineup.availablePlayerIds = uniqueIds([...lineup.availablePlayerIds, player.id]); }); } }); resetPlayerForm(); }
 function editPlayer(playerId) { const player = getPlayerById(playerId); if (!player) return; dom.playerId.value = player.id; dom.playerFirstName.value = player.firstName; dom.playerLastName.value = player.lastName; dom.playerNumber.value = player.number; dom.playerMiniface.value = ""; setSelectedPositions(player.positions); switchTab("players"); }
 async function deletePlayer(playerId) { const player = getPlayerById(playerId); if (!player) return; if (!await showConfirmModal("Usun zawodnika", `Usunac zawodnika ${getPlayerLabel(player)}?`)) return; commitChange(() => { const teamData = getTeamData(); teamData.players = teamData.players.filter((item) => item.id !== playerId); teamData.injuries = teamData.injuries.filter((item) => item.playerId !== playerId); teamData.suspensions = teamData.suspensions.filter((item) => item.playerId !== playerId); const squad = getActiveSquad(); squad.generalLineup.placedPlayers = squad.generalLineup.placedPlayers.filter((item) => item.playerId !== playerId); squad.matchLineups.forEach((lineup) => { lineup.placedPlayers = lineup.placedPlayers.filter((item) => item.playerId !== playerId); lineup.availablePlayerIds = lineup.availablePlayerIds.filter((id) => id !== playerId); }); }); }
 function resetPlayerForm() { dom.playerForm.reset(); dom.playerId.value = ""; setSelectedPositions([]); }
-async function handleInjurySubmit(event) { event.preventDefault(); const injury = { id: dom.injuryId.value || createId("injury"), playerId: dom.injuryPlayerId.value, startDate: normalizeDateInput(dom.injuryStartDate.value), type: dom.injuryType.value.trim(), severity: dom.injurySeverity.value.trim(), returnDate: normalizeDateInput(dom.injuryReturnDate.value) }; if (!injury.playerId || !isValidFlexibleDate(injury.startDate) || !isValidFlexibleDate(injury.returnDate)) { await showAlertModal("Blad", "Wpisz daty w formacie dd-mm-rrrr."); return; } commitChange(() => upsertById(getTeamData().injuries, injury)); resetInjuryForm(); }
+async function handleInjurySubmit(event) { event.preventDefault(); const injury = { id: dom.injuryId.value || createId("injury"), playerId: dom.injuryPlayerId.value, startDate: normalizeDateInput(dom.injuryStartDate.value), type: dom.injuryType.value.trim(), severity: dom.injurySeverity.value.trim(), returnDate: normalizeDateInput(dom.injuryReturnDate.value) }; if (!injury.playerId) { await showAlertModal("Blad", "Wybierz zawodnika."); return; } if (injury.startDate && !isValidFlexibleDate(injury.startDate)) { await showAlertModal("Blad", "Data urazu musi byc w formacie dd-mm-rrrr."); return; } if (injury.returnDate && !isValidFlexibleDate(injury.returnDate)) { await showAlertModal("Blad", "Przewidywany powrot musi byc w formacie dd-mm-rrrr."); return; } commitChange(() => upsertById(getTeamData().injuries, injury)); resetInjuryForm(); }
 function editInjury(id) { const injury = getInjuries().find((item) => item.id === id); if (!injury) return; dom.injuryId.value = injury.id; dom.injuryPlayerId.value = injury.playerId; dom.injuryStartDate.value = injury.startDate; dom.injuryType.value = injury.type; dom.injurySeverity.value = injury.severity; dom.injuryReturnDate.value = injury.returnDate; switchTab("injuries"); }
 async function deleteInjury(id) { if (!await showConfirmModal("Usun kontuzje", "Usunac kontuzje?")) return; commitChange(() => { getTeamData().injuries = getTeamData().injuries.filter((item) => item.id !== id); }); }
 function resetInjuryForm() { dom.injuryForm.reset(); dom.injuryId.value = ""; }
