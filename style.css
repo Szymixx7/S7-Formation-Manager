@@ -163,6 +163,11 @@ h1 {
     gap: 12px;
     padding: 18px 8px 0;
     flex-wrap: wrap;
+    align-items: center;
+}
+
+.nav-icon-button {
+    margin-left: auto;
 }
 
 .tab-panel {
@@ -217,6 +222,15 @@ h1 {
 .section-header {
     flex-wrap: wrap;
     align-items: flex-start;
+}
+
+.squad-header {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.squad-header > :first-child {
+    flex: 1 1 auto;
 }
 
 .section-header > :first-child {
