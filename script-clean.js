@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function cacheDom() {
     dom.tabButtons = [...document.querySelectorAll(".tab-button")];
     dom.tabPanels = [...document.querySelectorAll(".tab-panel")];
+    dom.toggleFullscreenButton = document.getElementById("toggle-fullscreen-button");
     dom.chooseFolderButton = document.getElementById("choose-folder-button");
     dom.saveStatus = document.getElementById("save-status");
     dom.folderName = document.getElementById("folder-name");
@@ -163,6 +164,7 @@ function normalizeBenchHeader() {
 
 function bindEvents() {
     dom.tabButtons.forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+    dom.toggleFullscreenButton.addEventListener("click", toggleFullscreenMode);
     dom.chooseFolderButton.addEventListener("click", chooseDataFolder);
     dom.undoButton.addEventListener("click", undoLastChange);
     dom.addSquadButton.addEventListener("click", addSquad);
@@ -272,6 +274,18 @@ function closeModal(result) {
         const resolve = activeModalResolver;
         activeModalResolver = null;
         resolve(result);
+    }
+}
+
+async function toggleFullscreenMode() {
+    try {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        } else {
+            await document.documentElement.requestFullscreen();
+        }
+    } catch (error) {
+        await showAlertModal("Fullscreen", "Nie udalo sie przelaczyc trybu fullscreen.");
     }
 }
 
