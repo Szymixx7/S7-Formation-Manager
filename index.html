@@ -104,8 +104,10 @@
                                     <p class="helper-text">Formacja aktualizuje ustawienie dopiero po kliknięciu fajki. Liczba zawodników na boisku może być dowolna.</p>
                                 </div>
                                 <div class="pitch-header">
+                                    <div>
                                     <h3>Zawodnicy na boisku</h3>
                                     <p id="lineup-summary">Dodawaj zawodników i przeciągaj ich po boisku.</p>
+                                    </div>
                                 </div>
                                 <div id="lineup-actions-panel" class="lineup-actions-panel hidden"></div>
                                 <div id="pitch" class="pitch"></div>
@@ -115,6 +117,13 @@
                                 <div class="pitch-header">
                                     <h3>Reszta zawodników</h3>
                                     <p>Dostępni poza podstawową jedenastką.</p>
+                                </div>
+                                <div id="bench-filter-switch" class="segmented-control" aria-label="Filtr zawodnikow na lawce">
+                                    <button class="segment active" data-bench-filter="all" type="button">Wszyscy</button>
+                                    <button class="segment" data-bench-filter="att" type="button">NAP</button>
+                                    <button class="segment" data-bench-filter="mid" type="button">POM</button>
+                                    <button class="segment" data-bench-filter="def" type="button">OBR</button>
+                                    <button class="segment" data-bench-filter="gk" type="button">BR</button>
                                 </div>
                                 <div id="bench-list" class="bench-list"></div>
                             </section>
@@ -195,19 +204,19 @@
                             </label>
                             <label>
                                 <span>Data urazu</span>
-                                <input id="injury-start-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr" required>
+                                <input id="injury-start-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr">
                             </label>
                             <label>
                                 <span>Typ urazu</span>
-                                <input id="injury-type" type="text" required>
+                                <input id="injury-type" type="text">
                             </label>
                             <label>
                                 <span>Stopień powagi</span>
-                                <input id="injury-severity" type="text" placeholder="np. lekka / średnia / poważna" required>
+                                <input id="injury-severity" type="text" placeholder="np. lekka / średnia / poważna">
                             </label>
                             <label>
                                 <span>Przewidywany powrót</span>
-                                <input id="injury-return-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr" required>
+                                <input id="injury-return-date" type="text" inputmode="numeric" placeholder="dd-mm-rrrr">
                             </label>
                             <div class="form-actions">
                                 <button class="primary-button" type="submit">Zapisz kontuzję</button>
@@ -285,6 +294,25 @@
                                 <option value="side">Z boku</option>
                             </select>
                         </label>
+                        <label class="toggle-field">
+                            <input id="disable-miniface" type="checkbox">
+                            <span>Wylacz miniface</span>
+                        </label>
+                        <label class="toggle-field">
+                            <input id="hide-player-number" type="checkbox">
+                            <span>Ukryj numer</span>
+                        </label>
+                        <label class="toggle-field">
+                            <input id="hide-player-positions" type="checkbox">
+                            <span>Ukryj pozycje</span>
+                        </label>
+                        <label class="toggle-field">
+                            <input id="auto-fix-positions" type="checkbox">
+                            <span>Automatyczny fix pozycji</span>
+                        </label>
+                        <div class="form-actions">
+                            <button id="fix-positions-button" class="ghost-button" type="button">Fix pozycji</button>
+                        </div>
                         <h2>Automatyczne czyszczenie historii</h2>
                         <label>
                             <span>Kontuzje: usuń po ilu dniach od końca</span>
